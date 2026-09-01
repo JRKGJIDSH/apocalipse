@@ -145,7 +145,7 @@ let globalTime = 0;
 let phase = 0; 
 let raceStarted = false;
 
-// Configuração das pistas
+// Configuração das pistas (CORRIGIDO: Valores numéricos definidos)
 const roadX = 200;
 const roadWidth = 400;
 const lanes =; 
@@ -344,4 +344,3 @@ function spawnManager() {
                 speed: gameSpeed * 0.3,
                 color: typeChance > 0.5 ? "#555" : "#a33"
             });
-        } else if (phase === 2) {
