@@ -51,7 +51,7 @@
             top: 40%;
             left: 50%;
             transform: translate(-50%, -50%);
-            font-size: 35px;
+            font-size: 30px;
             font-weight: bold;
             text-align: center;
             text-shadow: 3px 3px 0px #000;
@@ -140,15 +140,15 @@ const ctx = canvas.getContext("2d");
 // Configurações do jogo
 let score = 0;
 let gameActive = true;
-let gameSpeed = 3; // Começa mais lento e relaxante
+let gameSpeed = 3; 
 let globalTime = 0;
-let phase = 0; // 0: Passeio Leve, 1: Praia pós-queda, 2: Noite Zumbi, 3: Nordeste Robôs
+let phase = 0; 
 let raceStarted = false;
 
 // Configuração das pistas
 const roadX = 200;
 const roadWidth = 400;
-const lanes =;
+const lanes =; 
 
 // Efeito da água
 let waterOffset = 0;
@@ -198,7 +198,7 @@ window.addEventListener("keydown", e => {
 });
 window.addEventListener("keyup", e => { keys[e.code] = false; });
 
-// Disparo de tiros (só funciona após o início da corrida)
+// Disparo de tiros
 function handleShooting() {
     if (!raceStarted) return;
     if (player.cooldown > 0) player.cooldown--;
@@ -238,49 +238,45 @@ function showPhaseBanner(text, color) {
     setTimeout(() => { banner.style.opacity = 0; }, 2500);
 }
 
-// Atualização e física do evento do avião caindo
+// Animação do avião caindo
 function updatePlaneAnimation() {
-    if (globalTime === 450) { // ~7.5 segundos: Alerta de perigo iminente
-        showPhaseBanner("⚠️ ATENÇÃO: OBJETO ADENTRANDO A ATMOSFERA! ⚠️", "#ff3333");
+    if (globalTime === 200) { 
+        showPhaseBanner("⚠️ ALERTA: ANOMALIA ADENTRANDO A ATMOSFERA! ⚠️", "#ffaa00");
     }
 
-    if (globalTime > 600 && !planeEvent.crashed) { // ~10 segundos: Avião entra na tela
+    if (globalTime > 350 && !planeEvent.crashed) { 
         planeEvent.triggered = true;
         planeEvent.x += planeEvent.speedX;
         planeEvent.y += planeEvent.speedY;
 
-        // Solta fumaça preta e fogo enquanto cai
         if (globalTime % 2 === 0) {
             createExplosion(planeEvent.x - 20, planeEvent.y, "#333333", 2, 6);
             createExplosion(planeEvent.x - 10, planeEvent.y, "#ff5500", 1, 4);
         }
 
-        // Quando o avião atinge o meio da estrada/tela
-        if (planeEvent.x >= 350 && !planeEvent.crashed) {
+        if (planeEvent.x >= 380 && !planeEvent.crashed) {
             planeEvent.crashed = true;
             raceStarted = true;
             phase = 1;
-            gameSpeed = 6; // Jogo acelera instantaneamente
+            gameSpeed = 6; 
             
-            // Mega explosão na pista!
-            createExplosion(400, 300, "#ff3300", 80, 12);
-            createExplosion(400, 300, "#ffcc00", 60, 8);
-            createExplosion(400, 300, "#555555", 50, 15);
+            createExplosion(400, 300, "#ff3300", 90, 14);
+            createExplosion(400, 300, "#ffcc00", 70, 9);
+            createExplosion(400, 300, "#555555", 60, 16);
             
-            showPhaseBanner("O APOCALIPSE COMEÇOU! FUJA!", "#ff0000");
+            showPhaseBanner("O APOCALIPSE COMEÇOU! CORRA!", "#ff0000");
             document.getElementById("phaseDiv").innerText = "FASE: PRAIA (CORRIDA!)";
             document.getElementById("phaseDiv").style.color = "#ff3333";
             document.getElementById("nitroDiv").innerText = "NITRO: PRONTO";
             
-            // Deixa destroços fixos na pista imediatamente
             obstacles.push({
                 x: lanes[1],
-                y: 200,
-                width: 60,
-                height: 50,
+                y: 150,
+                width: 65,
+                height: 55,
                 type: "car",
-                hp: 3,
-                maxHp: 3,
+                hp: 4,
+                maxHp: 4,
                 speed: 1,
                 color: "#111"
             });
@@ -290,11 +286,8 @@ function updatePlaneAnimation() {
 
 function spawnManager() {
     globalTime++;
-    
-    // Controla a animação cinemática do avião
     updatePlaneAnimation();
 
-    // Se a corrida ainda não começou, spawna apenas coqueiros pacíficos nas laterais
     if (!raceStarted) {
         if (Math.random() < 0.02) {
             let isLeft = Math.random() > 0.5;
@@ -308,24 +301,47 @@ function spawnManager() {
         return; 
     }
 
-    // --- PROGRESSÃO DE FASES APÓS A QUEDA DO AVIÃO ---
-    if (phase === 1 && globalTime > 1500) {
+    if (phase === 1 && globalTime > 1300) {
         phase = 2;
         showPhaseBanner("FIM DO MUNDO: NOITE DOS ZUMBIS", "#ff3333");
         document.getElementById("phaseDiv").innerText = "FASE: NOITE (ZUMBIS)";
         document.getElementById("phaseDiv").style.color = "#ff3333";
-    } else if (phase === 2 && globalTime > 2600) {
+    } else if (phase === 2 && globalTime > 2500) {
         phase = 3;
         showPhaseBanner("MUNDO DESÉRTICO: INVASÃO ROBÔ", "#ffaa00");
         document.getElementById("phaseDiv").innerText = "FASE: NORDESTE (ROBÔS)";
         document.getElementById("phaseDiv").style.color = "#ffaa00";
     }
 
-    if (globalTime % 350 === 0) {
+    if (globalTime % 300 === 0) {
         gameSpeed += 0.5;
     }
 
-    // Spawn de Itens (Nitro)
-    if (Math.random() < 0.007) {
+    if (Math.random() < 0.008) {
         let laneIndex = Math.floor(Math.random() * 3);
         items.push({
+            x: lanes[laneIndex],
+            y: -50,
+            width: 25,
+            height: 35,
+            type: "nitro"
+        });
+    }
+
+    if (Math.random() < 0.025 + (gameSpeed * 0.002)) {
+        let laneIndex = Math.floor(Math.random() * 3);
+        let typeChance = Math.random();
+        
+        if (phase === 1) {
+            obstacles.push({
+                x: lanes[laneIndex],
+                y: -60,
+                width: 45,
+                height: 75,
+                type: "car",
+                hp: 2,
+                maxHp: 2,
+                speed: gameSpeed * 0.3,
+                color: typeChance > 0.5 ? "#555" : "#a33"
+            });
+        } else if (phase === 2) {
