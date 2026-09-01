@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Apocalipse Road: Evolução</title>
+    <title>Apocalipse zumbi: Evolução</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { 
@@ -51,14 +51,14 @@
             top: 40%;
             left: 50%;
             transform: translate(-50%, -50%);
-            font-size: 40px;
+            font-size: 35px;
             font-weight: bold;
             text-align: center;
             text-shadow: 3px 3px 0px #000;
             pointer-events: none;
             z-index: 20;
             opacity: 0;
-            transition: opacity 0.5s ease;
+            transition: opacity 0.3s ease;
             width: 100%;
         }
         #gameOverScreen {
@@ -118,17 +118,17 @@
 <div id="gameContainer">
     <div id="ui">
         <div class="hud-item" id="scoreDiv">PONTOS: 0</div>
-        <div class="hud-item" id="phaseDiv" style="color: #44ff44;">FASE: PRAIA (DIA)</div>
-        <div class="hud-item" id="nitroDiv" style="color: #00ffff;">NITRO: PRONTO</div>
+        <div class="hud-item" id="phaseDiv" style="color: #44ff44;">FASE: INTRO (PASSEIO CALMO)</div>
+        <div class="hud-item" id="nitroDiv" style="color: #00ffff;">NITRO: INDISPONÍVEL</div>
     </div>
     <div id="phaseBanner">MUDANÇA DE FASE!</div>
     <div id="gameOverScreen">
-        <h1>FIM DE JOGO</h1>
+        <h1>GAME OVER</h1>
         <p id="finalScore">Pontuação Total: 0</p>
         <button class="btn" onclick="resetGame()">JOGAR NOVAMENTE</button>
     </div>
     <div id="controlsHelp">
-        Mover: <b>A / D</b> ou <b>Setas</b> | Atirar: <b>ESPAÇO</b> | Pegue Galões Verdes de Nitro!
+        Mover: <b>A / D</b> ou <b>Setas</b> | Atirar: <b>ESPAÇO</b> (Desbloqueia após a queda!)
     </div>
     <canvas id="gameCanvas" width="800" height="600"></canvas>
 </div>
@@ -140,22 +140,33 @@ const ctx = canvas.getContext("2d");
 // Configurações do jogo
 let score = 0;
 let gameActive = true;
-let gameSpeed = 5;
+let gameSpeed = 3; // Começa mais lento e relaxante
 let globalTime = 0;
-let phase = 1; // 1: Dia/Praia, 2: Noite/Zumbi, 3: Nordeste/Robôs
-let phaseTimer = 0;
+let phase = 0; // 0: Passeio Leve, 1: Praia pós-queda, 2: Noite Zumbi, 3: Nordeste Robôs
+let raceStarted = false;
 
-// Configuração das pistas (Estatísticas de Estrada)
+// Configuração das pistas
 const roadX = 200;
 const roadWidth = 400;
-const lanes = [235, 335, 435]; // Posições X exatas dos centros das 3 faixas
+const lanes =;
 
-// Efeito da água (onda ondulante)
+// Efeito da água
 let waterOffset = 0;
 
-// Jogador (Carro de Guerra Blindado)
+// Configuração do evento do avião
+let planeEvent = {
+    triggered: false,
+    x: -150,
+    y: 100,
+    speedX: 8,
+    speedY: 4,
+    size: 60,
+    crashed: false
+};
+
+// Jogador
 const player = {
-    lane: 1, // Começa na pista do meio
+    lane: 1,
     x: lanes[1],
     y: 500,
     width: 45,
@@ -168,11 +179,11 @@ const player = {
 };
 
 // Listas de entidades
-let obstacles = []; // Carros, Zumbis, Zumbis Gigantes, Robôs
-let projectiles = []; // Tiros do jogador
-let items = []; // Itens colecionáveis (Nitro)
-let sceneryElements = []; // Aviões caídos, fogueiras, cactos, coqueiros
-let particles = []; // Sangue, faíscas, fumaça
+let obstacles = [];
+let projectiles = [];
+let items = [];
+let sceneryElements = [];
+let particles = [];
 
 // Teclas
 const keys = {};
@@ -187,8 +198,9 @@ window.addEventListener("keydown", e => {
 });
 window.addEventListener("keyup", e => { keys[e.code] = false; });
 
-// Disparo de tiros
+// Disparo de tiros (só funciona após o início da corrida)
 function handleShooting() {
+    if (!raceStarted) return;
     if (player.cooldown > 0) player.cooldown--;
     
     if (keys["Space"] && player.cooldown === 0) {
@@ -199,30 +211,25 @@ function handleShooting() {
             height: 15,
             speed: 15
         });
-        player.cooldown = player.nitroActive ? 4 : 8; // Atira mais rápido com Nitro
-        
-        // Partículas de fumaça do tiro
+        player.cooldown = player.nitroActive ? 4 : 8;
         createExplosion(player.x, player.y - 10, "#ffcc00", 3);
     }
 }
 
-// Criar explosões / partículas
 function createExplosion(x, y, color, count, size = 3) {
     for (let i = 0; i < count; i++) {
         particles.push({
             x: x,
             y: y,
-            vx: (Math.random() - 0.5) * 6,
-            vy: (Math.random() - 0.5) * 6,
+            vx: (Math.random() - 0.5) * 8,
+            vy: (Math.random() - 0.5) * 8,
             size: Math.random() * size + 2,
             color: color,
-            alpha: 1,
-            life: 1
+            alpha: 1
         });
     }
 }
 
-// Banner de transição de fase
 function showPhaseBanner(text, color) {
     const banner = document.getElementById("phaseBanner");
     banner.innerText = text;
@@ -231,640 +238,94 @@ function showPhaseBanner(text, color) {
     setTimeout(() => { banner.style.opacity = 0; }, 2500);
 }
 
-// Spawners de Obstáculos e Cenário
+// Atualização e física do evento do avião caindo
+function updatePlaneAnimation() {
+    if (globalTime === 450) { // ~7.5 segundos: Alerta de perigo iminente
+        showPhaseBanner("⚠️ ATENÇÃO: OBJETO ADENTRANDO A ATMOSFERA! ⚠️", "#ff3333");
+    }
+
+    if (globalTime > 600 && !planeEvent.crashed) { // ~10 segundos: Avião entra na tela
+        planeEvent.triggered = true;
+        planeEvent.x += planeEvent.speedX;
+        planeEvent.y += planeEvent.speedY;
+
+        // Solta fumaça preta e fogo enquanto cai
+        if (globalTime % 2 === 0) {
+            createExplosion(planeEvent.x - 20, planeEvent.y, "#333333", 2, 6);
+            createExplosion(planeEvent.x - 10, planeEvent.y, "#ff5500", 1, 4);
+        }
+
+        // Quando o avião atinge o meio da estrada/tela
+        if (planeEvent.x >= 350 && !planeEvent.crashed) {
+            planeEvent.crashed = true;
+            raceStarted = true;
+            phase = 1;
+            gameSpeed = 6; // Jogo acelera instantaneamente
+            
+            // Mega explosão na pista!
+            createExplosion(400, 300, "#ff3300", 80, 12);
+            createExplosion(400, 300, "#ffcc00", 60, 8);
+            createExplosion(400, 300, "#555555", 50, 15);
+            
+            showPhaseBanner("O APOCALIPSE COMEÇOU! FUJA!", "#ff0000");
+            document.getElementById("phaseDiv").innerText = "FASE: PRAIA (CORRIDA!)";
+            document.getElementById("phaseDiv").style.color = "#ff3333";
+            document.getElementById("nitroDiv").innerText = "NITRO: PRONTO";
+            
+            // Deixa destroços fixos na pista imediatamente
+            obstacles.push({
+                x: lanes[1],
+                y: 200,
+                width: 60,
+                height: 50,
+                type: "car",
+                hp: 3,
+                maxHp: 3,
+                speed: 1,
+                color: "#111"
+            });
+        }
+    }
+}
+
 function spawnManager() {
     globalTime++;
     
-    // Controle e Progressão de Fases por Tempo
-    if (phase === 1 && globalTime > 800) {
+    // Controla a animação cinemática do avião
+    updatePlaneAnimation();
+
+    // Se a corrida ainda não começou, spawna apenas coqueiros pacíficos nas laterais
+    if (!raceStarted) {
+        if (Math.random() < 0.02) {
+            let isLeft = Math.random() > 0.5;
+            sceneryElements.push({
+                x: isLeft ? Math.random() * 140 : 640 + Math.random() * 140,
+                y: -50,
+                type: "palm_tree",
+                size: Math.random() * 20 + 30
+            });
+        }
+        return; 
+    }
+
+    // --- PROGRESSÃO DE FASES APÓS A QUEDA DO AVIÃO ---
+    if (phase === 1 && globalTime > 1500) {
         phase = 2;
         showPhaseBanner("FIM DO MUNDO: NOITE DOS ZUMBIS", "#ff3333");
         document.getElementById("phaseDiv").innerText = "FASE: NOITE (ZUMBIS)";
         document.getElementById("phaseDiv").style.color = "#ff3333";
-    } else if (phase === 2 && globalTime > 1800) {
+    } else if (phase === 2 && globalTime > 2600) {
         phase = 3;
         showPhaseBanner("MUNDO DESÉRTICO: INVASÃO ROBÔ", "#ffaa00");
         document.getElementById("phaseDiv").innerText = "FASE: NORDESTE (ROBÔS)";
         document.getElementById("phaseDiv").style.color = "#ffaa00";
     }
 
-    // Aumentar velocidade gradualmente para pontuar mais rápido
-    if (globalTime % 300 === 0) {
+    if (globalTime % 350 === 0) {
         gameSpeed += 0.5;
     }
 
     // Spawn de Itens (Nitro)
-    if (Math.random() < 0.006) {
+    if (Math.random() < 0.007) {
         let laneIndex = Math.floor(Math.random() * 3);
         items.push({
-            x: lanes[laneIndex],
-            y: -50,
-            width: 25,
-            height: 35,
-            type: "nitro"
-        });
-    }
-
-    // Spawn de Obstáculos na Pista (Baseado na Fase Atual)
-    if (Math.random() < 0.02 + (gameSpeed * 0.002)) {
-        let laneIndex = Math.floor(Math.random() * 3);
-        let typeChance = Math.random();
-        
-        if (phase === 1) {
-            // Fase 1: Apenas carros civis de cores variadas
-            let colors = ["#ff3333", "#3355ff", "#eeee00", "#ff00ff"];
-            obstacles.push({
-                x: lanes[laneIndex],
-                y: -60,
-                width: 45,
-                height: 75,
-                type: "car",
-                color: colors[Math.floor(Math.random() * colors.length)],
-                hp: 1,
-                points: 10
-            });
-        } 
-        else if (phase === 2) {
-            // Fase 2: Carros apocalípticos escuros, Zumbis Normais e Zumbis Gigantes
-            if (typeChance < 0.4) {
-                // Zumbi Normal (Fraco, morre com 1 tiro ou atropelado)
-                obstacles.push({ x: lanes[laneIndex], y: -30, width: 25, height: 25, type: "zombie", color: "#44aa44", hp: 1, points: 20 });
-            } else if (typeChance < 0.7) {
-                // Zumbi GIGANTE (Precisa de 4 tiros para morrer, causa dano se atropelar direto!)
-                obstacles.push({ x: lanes[laneIndex], y: -50, width: 45, height: 45, type: "giant_zombie", color: "#116611", hp: 4, maxHp: 4, points: 100 });
-            } else {
-                // Carros Sombrios Destruídos
-                obstacles.push({ x: lanes[laneIndex], y: -60, width: 45, height: 75, type: "car", color: "#3a3a3a", hp: 2, points: 15 });
-            }
-        } 
-        else if (phase === 3) {
-            // Fase 3: Clima de Nordeste Seco com Robôs Alienígenas / Cibernéticos
-            if (typeChance < 0.5) {
-                // Drone Robô Ágil
-                obstacles.push({ x: lanes[laneIndex], y: -40, width: 35, height: 35, type: "robot", color: "#00ffff", hp: 2, points: 40 });
-            } else if (typeChance < 0.8) {
-                // Robô Titã Blindado (Mais forte)
-                obstacles.push({ x: lanes[laneIndex], y: -60, width: 50, height: 55, type: "giant_robot", color: "#ff5500", hp: 5, maxHp: 5, points: 150 });
-            } else {
-                // Carros abandonados enferrujados
-                obstacles.push({ x: lanes[laneIndex], y: -60, width: 45, height: 75, type: "car", color: "#8b5a2b", hp: 1, points: 20 });
-            }
-        }
-    }
-
-    // Spawn de Elementos Cenográficos Laterais (Fora da Pista)
-    if (Math.random() < 0.03) {
-        let side = Math.random() < 0.5 ? "left" : "right";
-        let xPos = side === "left" ? Math.random() * 150 : 620 + Math.random() * 150;
-        
-        if (phase === 1) {
-            // Coqueiros da Praia
-            sceneryElements.push({ x: xPos, y: -80, type: "palm", size: 40 + Math.random() * 20 });
-        } 
-        else if (phase === 2) {
-            // Avião Caído pegando fogo na lateral ou Bolas de Fogo caindo do céu
-            if (Math.random() < 0.3) {
-                sceneryElements.push({ x: xPos, y: -120, type: "crashed_plane", size: 90 });
-            } else {
-                sceneryElements.push({ x: xPos, y: -50, type: "fireball", size: 25, speedY: gameSpeed + 3 });
-            }
-        } 
-        else if (phase === 3) {
-            // Cactos Secos e Detritos de Metal no Nordeste
-            if (Math.random() < 0.6) {
-                sceneryElements.push({ x: xPos, y: -60, type: "cactus", size: 30 + Math.random() * 20 });
-            } else {
-                sceneryElements.push({ x: xPos, y: -50, type: "scrap", size: 40 });
-            }
-        }
-    }
-}
-
-// Atualizar a lógica do jogo
-function update() {
-    if (!gameActive) return;
-
-    // Gerenciamento e spawns
-    spawnManager();
-
-    // Movimentação suave do jogador lateralmente entre pistas
-    let dx = player.targetX - player.x;
-    if (Math.abs(dx) > 1) {
-        player.x += Math.sign(dx) * player.speed;
-    } else {
-        player.x = player.targetX;
-    }
-
-    // Controlar o Nitro do Jogador
-    if (player.nitroActive) {
-        player.nitroTimer--;
-        score += 2; // Pontuação rola em dobro no nitro
-        document.getElementById("nitroDiv").innerText = "NITRO ATIVO!!";
-        document.getElementById("nitroDiv").style.color = "#ff00ff";
-        if (player.nitroTimer <= 0) {
-            player.nitroActive = false;
-            document.getElementById("nitroDiv").innerText = "NITRO: RECARREGANDO";
-            document.getElementById("nitroDiv").style.color = "#777";
-        }
-    } else {
-        if (globalTime % 2 === 0) score += 1; // Pontuação passiva normal por sobreviver
-        if (globalTime % 150 === 0) {
-            document.getElementById("nitroDiv").innerText = "NITRO: PRONTO";
-            document.getElementById("nitroDiv").style.color = "#00ffff";
-        }
-    }
-
-    let currentSpeed = player.nitroActive ? gameSpeed * 1.8 : gameSpeed;
-
-    // Movimentar e oscilar a água na praia
-    waterOffset += 0.05;
-
-    // Atualizar Tiros/Projéteis
-    for (let i = projectiles.length - 1; i >= 0; i--) {
-        projectiles[i].y -= projectiles[i].speed;
-        if (projectiles[i].y < -20) {
-            projectiles.splice(i, 1);
-        }
-    }
-
-    // Atualizar Elementos Cenográficos
-    for (let i = sceneryElements.length - 1; i >= 0; i--) {
-        let el = sceneryElements[i];
-        if (el.type === "fireball" && el.speedY) {
-            el.y += el.speedY; // Bolas de fogo caem mais velozes que o cenário
-        } else {
-            el.y += currentSpeed;
-        }
-        
-        // Se sair da tela, deletar
-        if (el.y > 650) sceneryElements.splice(i, 1);
-    }
-
-    // Atualizar Itens Coletáveis
-    for (let i = items.length - 1; i >= 0; i--) {
-        items[i].y += currentSpeed;
-
-        // Colisão do Item com o Jogador
-        if (checkCollision(player, items[i])) {
-            player.nitroActive = true;
-            player.nitroTimer = 200; // Tempo de duração do nitro
-            createExplosion(items[i].x, items[i].y, "#00ffff", 15, 4);
-            items.splice(i, 1);
-            continue;
-        }
-
-        if (items[i].y > 650) items.splice(i, 1);
-    }
-
-    // Atualizar Obstáculos (Inimigos, Carros, Zumbis e Robôs)
-    for (let i = obstacles.length - 1; i >= 0; i--) {
-        let obs = obstacles[i];
-        
-        // Zumbis e Robôs correm na direção do jogador ou avançam mais devagar
-        if (obs.type === "zombie" || obs.type === "giant_zombie") {
-            obs.y += currentSpeed * 0.7; // Parecem se mover na pista vindo na direção
-        } else if (obs.type === "robot" || obs.type === "giant_robot") {
-            obs.y += currentSpeed * 0.9;
-        } else {
-            obs.y += currentSpeed * 0.5; // Carros andam no mesmo sentido mas mais devagar
-        }
-
-        // Colisão do Projétil (Tiro) com o Obstáculo
-        for (let j = projectiles.length - 1; j >= 0; j--) {
-            if (checkCollision(projectiles[j], obs)) {
-                obs.hp--;
-                projectiles.splice(j, 1);
-                
-                // Cria faíscas ou partículas de impacto
-                let hitColor = (obs.type.includes("zombie")) ? "#55aa22" : "#ffcc00";
-                createExplosion(obs.x, obs.y, hitColor, 5, 2);
-
-                if (obs.hp <= 0) {
-                    // Inimigo Derrotado por Tiro!
-                    score += obs.points;
-                    let expColor = (obs.type.includes("zombie")) ? "#338811" : "#888888";
-                    createExplosion(obs.x, obs.y, expColor, 15, obs.type.includes("giant") ? 6 : 4);
-                    obstacles.splice(i, 1);
-                    break;
-                }
-            }
-        }
-
-        if (!obstacles[i]) continue; // Se já foi destruído pelo tiro, pula para o próximo
-
-        // Colisão Direta do Obstáculo com o Carro do Jogador
-        if (checkCollision(player, obs)) {
-            // REGRA DE ATROPELAMENTO DE INIMIGOS PEQUENOS COM CARRO DE GUERRA
-            if ((obs.type === "zombie" || obs.type === "robot") || player.nitroActive) {
-                // Atropelado com Sucesso! Explode em sangue/sucata e dá pontos
-                score += obs.points;
-                let splatColor = obs.type.includes("zombie") ? "#449911" : "#00eeee";
-                createExplosion(obs.x, obs.y, splatColor, 20, 5);
-                obstacles.splice(i, 1);
-            } else {
-                // Se for um CARRO ou ZUMBI GIGANTE / ROBÔ TITÃ sem nitro, o jogador BATE e perde!
-                gameOver();
-            }
-            continue;
-        }
-
-        // Limpar fora da tela
-        if (obs.y > 650) obstacles.splice(i, 1);
-    }
-
-    // Atualizar Partículas
-    for (let i = particles.length - 1; i >= 0; i--) {
-        let p = particles[i];
-        p.x += p.vx;
-        p.y += p.vy;
-        p.alpha -= 0.02;
-        if (p.alpha <= 0) particles.splice(i, 1);
-    }
-
-    // Atualizar Interface HUD
-    document.getElementById("scoreDiv").innerText = `PONTOS: ${score}`;
-}
-
-// Função de Detecção de Colisão Estilo AABB Box
-function checkCollision(rect1, rect2) {
-    return (
-        rect1.x - rect1.width/2 < rect2.x + rect2.width/2 &&
-        rect1.x + rect1.width/2 > rect2.x - rect2.width/2 &&
-        rect1.y - rect1.height/2 < rect2.y + rect2.height/2 &&
-        rect1.y + rect1.height/2 > rect2.y - rect2.height/2
-    );
-}
-
-// Renderização Geral dos Gráficos na Tela
-function draw() {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-    // 1. DESENHAR CENÁRIO DE FUNDO (LATERAIS) BASEADO NA FASE ATUAL
-    if (phase === 1) {
-        // Lado Esquerdo: Mar com Ondas se Mexendo Realistas
-        ctx.fillStyle = "#1e90ff";
-        ctx.fillRect(0, 0, 200, 600);
-        
-        // Efeito visual de ondas se movendo
-        ctx.fillStyle = "#5cb8ff";
-        for (let y = -40; y < 640; y += 40) {
-            let xWave = 180 + Math.sin((y + globalTime * 4) * 0.05) * 8;
-            ctx.beginPath();
-            ctx.arc(xWave, y, 15, 0, Math.PI * 2);
-            ctx.fill();
-        }
-
-        // Lado Direito: Areia e Grama da Praia
-        ctx.fillStyle = "#eedd82";
-        ctx.fillRect(600, 0, 200, 600);
-        ctx.fillStyle = "#228b22";
-        ctx.fillRect(650, 0, 150, 600);
-    } 
-    else if (phase === 2) {
-        // Lado Esquerdo: Oceano de Sangue do Fim do Mundo se movendo
-        ctx.fillStyle = "#550000";
-        ctx.fillRect(0, 0, 200, 600);
-        
-        ctx.fillStyle = "#880000";
-        for (let y = -40; y < 640; y += 40) {
-            let xWave = 185 + Math.sin((y + globalTime * 6) * 0.07) * 6;
-            ctx.beginPath();
-            ctx.arc(xWave, y, 12, 0, Math.PI * 2);
-            ctx.fill();
-        }
-
-        // Lado Direito: Terra Queimada e Destruída
-        ctx.fillStyle = "#2b2b2b";
-        ctx.fillRect(600, 0, 200, 600);
-        ctx.fillStyle = "#151515";
-        ctx.fillRect(660, 0, 140, 600);
-    } 
-    else if (phase === 3) {
-        // Clima de Nordeste Seco: Solo Rachado e Tons de Laranja/Marrom dos dois lados
-        ctx.fillStyle = "#cd853f"; // Solo Laranja Terra Cota
-        ctx.fillRect(0, 0, 200, 600);
-        ctx.fillRect(600, 0, 200, 600);
-        
-        // Linhas de rachadura no solo nordestino
-        ctx.strokeStyle = "#8b4513";
-        ctx.lineWidth = 1;
-        for (let i = 0; i < canvas.width; i += 120) {
-            if (i > 200 && i < 600) continue;
-            ctx.beginPath();
-            ctx.moveTo(i + Math.sin(globalTime*0.01)*10, 0);
-            ctx.lineTo(i + Math.cos(globalTime*0.01)*10, 600);
-            ctx.stroke();
-        }
-    }
-
-    // 2. DESENHAR A ESTRADA (CENTRO)
-    // Cor do asfalto dependendo do clima da fase
-    if (phase === 1) ctx.fillStyle = "#444";
-    else if (phase === 2) ctx.fillStyle = "#222";
-    else ctx.fillStyle = "#5e544b"; // Estrada empoeirada no Nordeste
-    
-    ctx.fillRect(roadX, 0, roadWidth, 600);
-
-    // Linhas Laterais da Pista
-    ctx.fillStyle = "#fff";
-    ctx.fillRect(roadX, 0, 5, 600);
-    ctx.fillRect(roadX + roadWidth - 5, 0, 5, 600);
-
-    // Linhas Tracejadas Centrais Pontilhadas (Movimento da Estrada)
-    ctx.fillStyle = phase === 1 ? "#ffff00" : "#ff5500";
-    let lineOffset = (globalTime * (player.nitroActive ? gameSpeed * 1.8 : gameSpeed)) % 60;
-    for (let y = -60 + lineOffset; y < 600; y += 60) {
-        ctx.fillRect(roadX + 130, y, 6, 30);
-        ctx.fillRect(roadX + 265, y, 6, 30);
-    }
-
-    // 3. DESENHAR ELEMENTOS DE CENÁRIO (Árvores, Aviões Caídos, Cactos)
-    sceneryElements.forEach(el => {
-        ctx.save();
-        ctx.translate(el.x, el.y);
-        if (el.type === "palm") {
-            // Tronco
-            ctx.fillStyle = "#8b4513";
-            ctx.fillRect(-5, 0, 10, el.size);
-            // Folhas Verdes
-            ctx.fillStyle = "#006400";
-            ctx.beginPath();
-            ctx.arc(0, 0, el.size/2, 0, Math.PI*2);
-            ctx.fill();
-        } 
-        else if (el.type === "crashed_plane") {
-            // Desenhar Avião Destruído em Chamas
-            ctx.fillStyle = "#777777";
-            // Asas quebras
-            ctx.fillRect(-el.size/2, -10, el.size, 16);
-            ctx.fillStyle = "#555555";
-            ctx.fillRect(-12, -el.size/3, 24, el.size);
-            // Fogo saindo do avião caido
-            ctx.fillStyle = Math.random() > 0.5 ? "#ff3300" : "#ffaa00";
-            ctx.beginPath();
-            ctx.arc(0, -10, 15 + Math.random()*8, 0, Math.PI*2);
-            ctx.fill();
-        } 
-        else if (el.type === "fireball") {
-            // Bola de Fogo Cadente
-            let gradient = ctx.createRadialGradient(0,0, 2, 0,0, el.size);
-            gradient.addColorStop(0, '#ffffff');
-            gradient.addColorStop(0.3, '#ffcc00');
-            gradient.addColorStop(1, 'rgba(255, 0, 0, 0)');
-            ctx.fillStyle = gradient;
-            ctx.beginPath();
-            ctx.arc(0, 0, el.size, 0, Math.PI*2);
-            ctx.fill();
-        } 
-        else if (el.type === "cactus") {
-            // Cacto do Nordeste
-            ctx.fillStyle = "#447a3a";
-            ctx.fillRect(-6, -el.size, 12, el.size); // Tronco central
-            ctx.fillRect(-15, -el.size*0.7, 20, 6);  // Galho esquerdo
-            ctx.fillRect(-15, -el.size*0.7 - 10, 6, 12);
-            ctx.fillRect(-5, -el.size*0.4, 22, 6);   // Galho direito
-            ctx.fillRect(12, -el.size*0.4 - 12, 6, 15);
-        }
-        else if (el.type === "scrap") {
-            // Sucata metálica
-            ctx.fillStyle = "#555";
-            ctx.fillRect(-15, -15, 30, 25);
-            ctx.fillStyle = "#333";
-            ctx.fillRect(-8, -5, 16, 10);
-        }
-        ctx.restore();
-    });
-
-    // 4. DESENHAR ITENS COLECIONÁVEIS (NITRO)
-    items.forEach(it => {
-        ctx.fillStyle = "#00ff33"; // Galão verde brilhante
-        ctx.fillRect(it.x - it.width/2, it.y - it.height/2, it.width, it.height);
-        // Alça do galão
-        ctx.fillStyle = "#00aa22";
-        ctx.fillRect(it.x - 8, it.y - it.height/2 - 4, 16, 5);
-        // Texto N2O
-        ctx.fillStyle = "#fff";
-        ctx.font = "bold 10px Arial";
-        ctx.fillText("N2O", it.x - 9, it.y + 4);
-    });
-
-    // 5. DESENHAR PROJÉTEIS (TIROS)
-    ctx.fillStyle = "#ffff33";
-    projectiles.forEach(p => {
-        ctx.fillRect(p.x - p.width/2, p.y - p.height/2, p.width, p.height);
-    });
-
-    // 6. DESENHAR OBSTÁCULOS (INIMIGOS / CARROS / ZUMBIS / ROBÔS)
-    obstacles.forEach(obs => {
-        ctx.save();
-        ctx.translate(obs.x, obs.y);
-
-        if (obs.type === "car") {
-            // Corpo principal do carro
-            ctx.fillStyle = obs.color;
-            ctx.fillRect(-obs.width/2, -obs.height/2, obs.width, obs.height);
-            // Vidros do Carro
-            ctx.fillStyle = "#add8e6";
-            ctx.fillRect(-obs.width/2 + 5, -obs.height/4, obs.width - 10, 15); // Parabrisa
-            ctx.fillRect(-obs.width/2 + 5, obs.height/5, obs.width - 10, 10);  // Vidro traseiro
-            // Rodas
-            ctx.fillStyle = "#000";
-            ctx.fillRect(-obs.width/2 - 3, -obs.height/3, 4, 15);
-            ctx.fillRect(obs.width/2 - 1, -obs.height/3, 4, 15);
-            ctx.fillRect(-obs.width/2 - 3, obs.height/4, 4, 15);
-            ctx.fillRect(obs.width/2 - 1, obs.height/4, 4, 15);
-        } 
-        else if (obs.type === "zombie") {
-            // Desenhar Zumbi comum andando
-            ctx.fillStyle = obs.color; // Pele verde
-            ctx.beginPath();
-            ctx.arc(0, 0, obs.width/2, 0, Math.PI*2); // Cabeça/corpo
-            ctx.fill();
-            // Braços esticados para frente (para cima no canvas)
-            ctx.fillStyle = "#556b2f";
-            ctx.fillRect(-6, -18, 4, 12);
-            ctx.fillRect(2, -18, 4, 12);
-            // Olhos vermelhos brilhantes
-            ctx.fillStyle = "#ff0000";
-            ctx.fillRect(-3, -3, 2, 2);
-            ctx.fillRect(1, -3, 2, 2);
-        } 
-        else if (obs.type === "giant_zombie") {
-            // ZUMBI GIGANTE COM BARRA DE VIDA
-            ctx.fillStyle = obs.color;
-            ctx.beginPath();
-            ctx.arc(0, 0, obs.width/2, 0, Math.PI*2);
-            ctx.fill();
-            // Ombro/Músculos gigantes
-            ctx.fillRect(-obs.width/2, -5, obs.width, 15);
-            // Braços imensos para frente
-            ctx.fillStyle = "#224411";
-            ctx.fillRect(-14, -28, 7, 20);
-            ctx.fillRect(7, -28, 7, 20);
-            // Olhos vermelhos mutantes
-            ctx.fillStyle = "#ff0000";
-            ctx.beginPath(); ctx.arc(-5, -4, 4, 0, Math.PI*2); ctx.fill();
-            ctx.beginPath(); ctx.arc(5, -4, 4, 0, Math.PI*2); ctx.fill();
-
-            // Desenhar mini barra de vida em cima dele
-            drawHpBar(obs);
-        } 
-        else if (obs.type === "robot") {
-            // Drone Cibernético Metálico
-            ctx.fillStyle = obs.color;
-            ctx.fillRect(-obs.width/2, -obs.height/2, obs.width, obs.height);
-            // Núcleo de energia neon
-            ctx.fillStyle = "#ffffff";
-            ctx.beginPath(); ctx.arc(0, 0, 5, 0, Math.PI*2); ctx.fill();
-            // Pernas articuladas metálicas
-            ctx.strokeStyle = "#555";
-            ctx.lineWidth = 3;
-            ctx.beginPath();
-            ctx.moveTo(-obs.width/2, 0); ctx.lineTo(-obs.width/2 - 8, 5);
-            ctx.moveTo(obs.width/2, 0); ctx.lineTo(obs.width/2 + 8, 5);
-            ctx.stroke();
-        } 
-        else if (obs.type === "giant_robot") {
-            // MECHA TITÃ DO NORDESTE
-            ctx.fillStyle = obs.color; // Chassi Laranja/Aço
-            ctx.fillRect(-obs.width/2, -obs.height/2, obs.width, obs.height);
-            // Placa peitoral cinza escuro
-            ctx.fillStyle = "#333";
-            ctx.fillRect(-obs.width/3, -obs.height/4, (obs.width/3)*2, obs.height/2);
-            // Olho visor laser vermelho horizontal
-            ctx.fillStyle = "#ff0000";
-            ctx.fillRect(-obs.width/2 + 6, -obs.height/2 + 4, obs.width - 12, 5);
-            
-            // Desenhar barra de vida
-            drawHpBar(obs);
-        }
-
-        ctx.restore();
-    });
-
-    // Função interna para desenhar barras de vida sobre os chefes menores
-    function drawHpBar(entity) {
-        let barW = entity.width + 10;
-        let barH = 5;
-        let barX = -barW / 2;
-        let barY = -entity.height/2 - 12;
-        // Fundo vermelho
-        ctx.fillStyle = "#ff0000";
-        ctx.fillRect(barX, barY, barW, barH);
-        // Vida atual verde
-        let currentBarW = barW * (entity.hp / entity.maxHp);
-        ctx.fillStyle = "#00ff00";
-        ctx.fillRect(barX, barY, currentBarW, barH);
-    }
-
-    // 7. DESENHAR O CARRO DO JOGADOR (CARRO DE GUERRA BLINDADO)
-    ctx.save();
-    ctx.translate(player.x, player.y);
-
-    // Efeito Visual de Fogo Traseiro do Nitro Ativo
-    if (player.nitroActive) {
-        let fireGradient = ctx.createLinearGradient(0, player.height/2, 0, player.height/2 + 40);
-        fireGradient.addColorStop(0, '#00ffff');
-        fireGradient.addColorStop(0.5, '#0055ff');
-        fireGradient.addColorStop(1, 'rgba(0,0,255,0)');
-        ctx.fillStyle = fireGradient;
-        ctx.fillRect(-15, player.height/2, 30, 35 + Math.random()*15);
-    }
-
-    // Chassi do Tanque/Carro de Guerra Militar (Verde Oliva Camuflado)
-    ctx.fillStyle = "#4b5320"; 
-    ctx.fillRect(-player.width/2, -player.height/2, player.width, player.height);
-
-    // Detalhes da Blindagem Metálica (Placas reforçadas nas laterais)
-    ctx.fillStyle = "#3b4018";
-    ctx.fillRect(-player.width/2 - 3, -player.height/3, 3, (player.height/3)*2);
-    ctx.fillRect(player.width/2, -player.height/3, 3, (player.height/3)*2);
-
-    // PARACHOQUE DE ESPINHOS FRONTAL (Mata-Zumbis / Destruidor de Robôs)
-    ctx.strokeStyle = "#888888";
-    ctx.lineWidth = 3;
-    ctx.beginPath();
-    let spikeY = -player.height/2 - 6;
-    for (let xOffset = -player.width/2 + 4; xOffset <= player.width/2 - 4; xOffset += 8) {
-        ctx.moveTo(xOffset, -player.height/2);
-        ctx.lineTo(xOffset, spikeY);
-        ctx.lineTo(xOffset + 4, -player.height/2);
-    }
-    ctx.stroke();
-
-    // Torreta de Armas Superior / Canhão Duplo no teto do carro
-    ctx.fillStyle = "#2b3010";
-    ctx.fillRect(-12, -15, 24, 30); // Base da torreta
-    ctx.fillStyle = "#1a1a1a";
-    ctx.fillRect(-7, -28, 4, 18);  // Canhão esquerdo
-    ctx.fillRect(3, -28, 4, 18);   // Canhão direito
-
-    // Esteiras / Rodas Pretas Blindadas
-    ctx.fillStyle = "#111";
-    ctx.fillRect(-player.width/2 - 1, -player.height/2 + 10, 3, 18);
-    ctx.fillRect(player.width/2 - 2, -player.height/2 + 10, 3, 18);
-    ctx.fillRect(-player.width/2 - 1, player.height/2 - 25, 3, 18);
-    ctx.fillRect(player.width/2 - 2, player.height/2 - 25, 3, 18);
-
-    ctx.restore();
-
-    // 8. DESENHAR TODAS AS PARTÍCULAS (SANGUE, FAÍSCAS)
-    particles.forEach(p => {
-        ctx.save();
-        ctx.globalAlpha = p.alpha;
-        ctx.fillStyle = p.color;
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, p.size, 0, Math.PI*2);
-        ctx.fill();
-        ctx.restore();
-    });
-}
-
-// Loop Principal do GameEngine
-function gameLoop() {
-    update();
-    draw();
-    handleShooting();
-    requestAnimationFrame(gameLoop);
-}
-
-// Ativar Fim de Jogo (Game Over)
-function gameOver() {
-    gameActive = false;
-    document.getElementById("gameOverScreen").style.display = "flex";
-    document.getElementById("finalScore").innerText = `Sua Pontuação Total foi de: ${score} pontos`;
-}
-
-// Reiniciar tudo do zero mantendo a estrutura
-function resetGame() {
-    score = 0;
-    gameSpeed = 5;
-    globalTime = 0;
-    phase = 1;
-    obstacles = [];
-    projectiles = [];
-    items = [];
-    sceneryElements = [];
-    particles = [];
-    
-    player.lane = 1;
-    player.x = lanes[1];
-    player.targetX = lanes[1];
-    player.nitroActive = false;
-    player.nitroTimer = 0;
-    
-    document.getElementById("phaseDiv").innerText = "FASE: PRAIA (DIA)";
-    document.getElementById("phaseDiv").style.color = "#44ff44";
-    document.getElementById("nitroDiv").innerText = "NITRO: PRONTO";
-    document.getElementById("nitroDiv").style.color = "#00ffff";
-    document.getElementById("gameOverScreen").style.display = "none";
-    
-    gameActive = true;
-}
-
-// Iniciar o jogo automaticamente ao carregar a página
-gameLoop();
-</script>
-
-</body>
-</html>
